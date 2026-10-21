@@ -24,6 +24,7 @@ PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 import java.io.PrintStream;
 import java.util.Vector;
 import java.util.Enumeration;
+import java.util.LinkedList;
 
 /** This class is used for representing the inheritance tree during code
     generation. You will need to fill in some of its methods and
@@ -391,9 +392,9 @@ class CgenClassTable extends SymbolTable {
 
         this.str = str;
 
-        stringclasstag = 0 /* Change to your String class tag here */;
-        intclasstag =    0 /* Change to your Int class tag here */;
-        boolclasstag =   0 /* Change to your Bool class tag here */;
+        stringclasstag = 4 /* Change to your String class tag here */;
+        intclasstag =    2 /* Change to your Int class tag here */;
+        boolclasstag =   3 /* Change to your Bool class tag here */;
 
         enterScope();
         if (Flags.cgen_debug) System.out.println("Building CgenClassTable");
@@ -402,14 +403,17 @@ class CgenClassTable extends SymbolTable {
         installClasses(cls);
         buildInheritanceTree();
 
-        code();
+        code(cls, str);
 
         exitScope();
     }
 
     /** This method is the meat of the code generator.  It is to be
         filled in programming assignment 5 */
-    public void code() {
+    public void code(Classes cls, PrintStream str) {
+        // hacer lista para guardar todos los tags 
+        
+
         if (Flags.cgen_debug) System.out.println("coding global data");
         codeGlobalData();
 
@@ -419,6 +423,59 @@ class CgenClassTable extends SymbolTable {
         if (Flags.cgen_debug) System.out.println("coding constants");
         codeConstants();
 
+        LinkedList<AbstractSymbol> classes = new LinkedList<AbstractSymbol>();
+        classes.add(TreeConstants.Object_);
+        classes.add(TreeConstants.IO);
+        classes.add(TreeConstants.Int);
+        classes.add(TreeConstants.Bool);
+        classes.add(TreeConstants.Str);
+
+        for (Enumeration e = cls.getElements(); e.hasMoreElements(); ) {
+            class_c currClass = (class_c) e.nextElement();
+            classes.add(currClass.getName());
+        
+        }
+        str.print(CgenSupport.CLASSNAMETAB.concat(CgenSupport.LABEL));
+
+
+        for (int i = 0; i < classes.size(); i++){
+            str.print(CgenSupport.WORD);
+            ((StringSymbol)AbstractTable.stringtable.lookup(classes.get(i).toString())).codeRef(str);
+            str.print(CgenSupport.NEWLINE);
+        }
+        
+    
+
+        for (int i = 0; i < classes.size(); i++) {
+            class_c currClass = (class_c) lookup(classes.get(i));
+            CgenSupport.emitProtObjRef(currClass.getName(), str);
+            str.print(CgenSupport.LABEL);
+            str.print(CgenSupport.WORD + i + CgenSupport.NEWLINE);
+        }
+
+        str.print(CgenSupport.CLASSOBJTAB.concat(CgenSupport.LABEL));
+
+        for (int i = 0; i < classes.size(); i++){
+            str.print(CgenSupport.WORD);
+            CgenSupport.emitProtObjRef(classes.get(i), str);
+            str.print(CgenSupport.NEWLINE);
+
+            str.print(CgenSupport.WORD);
+            CgenSupport.emitInitRef(classes.get(i), str);
+            str.print(CgenSupport.NEWLINE);
+        }
+
+        str.print(CgenSupport.DISPTAB_SUFFIX.concat(CgenSupport.LABEL));
+        for (int i = 0; i < classes.size(); i++){
+            class_c currClass = (class_c) lookup(classes.get(i));
+            CgenSupport.emitDispTableRef(currClass.getName(), str);
+            str.print(CgenSupport.LABEL);
+        }    
+
+       
+
+        
+      
         //                 Add your code to emit
         //                   - prototype objects
         //                   - class_nameTab
@@ -427,6 +484,9 @@ class CgenClassTable extends SymbolTable {
         if (Flags.cgen_debug) System.out.println("coding global text");
         codeGlobalText();
 
+    
+
+       
         //                 Add your code to emit
         //                   - object initializer
         //                   - the class methods
@@ -437,5 +497,7 @@ class CgenClassTable extends SymbolTable {
     public CgenNode root() {
         return (CgenNode)probe(TreeConstants.Object_);
     }
+
+
 
 }
