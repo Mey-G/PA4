@@ -1059,6 +1059,19 @@ class plus extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        e1.code(s);
+    CgenSupport.emitPush(CgenSupport.ACC, s);
+    e2.code(s);
+    CgenSupport.emitJal(CgenSupport.OBJECTPROTOBJ, s);
+    CgenSupport.emitFetchInt(CgenSupport.T2, CgenSupport.ACC, s);
+
+    CgenSupport.emitLoad(CgenSupport.T1, 1, CgenSupport.SP, s);
+    CgenSupport.emitAddi(CgenSupport.SP, CgenSupport.SP, 4, s);
+
+    CgenSupport.emitFetchInt(CgenSupport.T1, CgenSupport.T1, s);
+    
+    CgenSupport.emitAdd(CgenSupport.T1, CgenSupport.T1, CgenSupport.T2, s);
+    CgenSupport.emitStoreInt(CgenSupport.T1, CgenSupport.ACC, s);
     }
 
 }

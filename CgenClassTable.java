@@ -23,6 +23,10 @@ PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 
 import java.io.PrintStream;
 import java.util.Vector;
+
+import javax.swing.table.AbstractTableModel;
+
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedList;
 
@@ -446,13 +450,6 @@ class CgenClassTable extends SymbolTable {
         
     
 
-        for (int i = 0; i < classes.size(); i++) {
-            class_c currClass = (class_c) lookup(classes.get(i));
-            CgenSupport.emitProtObjRef(currClass.getName(), str);
-            str.print(CgenSupport.LABEL);
-            str.print(CgenSupport.WORD + i + CgenSupport.NEWLINE);
-        }
-
         str.print(CgenSupport.CLASSOBJTAB.concat(CgenSupport.LABEL));
 
         for (int i = 0; i < classes.size(); i++){
@@ -465,13 +462,68 @@ class CgenClassTable extends SymbolTable {
             str.print(CgenSupport.NEWLINE);
         }
 
-        str.print(CgenSupport.DISPTAB_SUFFIX.concat(CgenSupport.LABEL));
+        // es para los _dispTab
         for (int i = 0; i < classes.size(); i++){
-            class_c currClass = (class_c) lookup(classes.get(i));
-            CgenSupport.emitDispTableRef(currClass.getName(), str);
+            CgenNode nodo = (CgenNode) lookup(classes.get(i));
+            CgenSupport.emitDispTableRef(nodo.getName(), str);
             str.print(CgenSupport.LABEL);
-        }    
+        
 
+            LinkedList<AbstractSymbol> due  = new LinkedList<AbstractSymbol>();
+            LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();  
+            met(nodo, due, nombres);
+
+            for (int k = 0; k < nombres.size(); k++){
+                str.print(CgenSupport.WORD);
+                CgenSupport.emitMethodRef(due.get(k), nombres.get(k), str);
+                str.print(CgenSupport.NEWLINE);
+            }
+        
+        }
+
+        // para los protObj
+        for (int i = 0; i < classes.size(); i++){
+            CgenNode nodo = (CgenNode) lookup(classes.get(i));
+            CgenSupport.emitProtObjRef(nodo.getName(), str);
+            str.print(CgenSupport.LABEL);
+            str.print(CgenSupport.WORD + i + CgenSupport.NEWLINE); // es el tag
+
+            
+            LinkedList<AbstractSymbol> tipos = new LinkedList<AbstractSymbol>();  
+            atri(nodo, tipos);
+
+
+            int tamaño = CgenSupport.DEFAULT_OBJFIELDS + tipos.size();
+            str.print(CgenSupport.WORD + tamaño);
+            str.print(CgenSupport.NEWLINE);
+
+            str.print(CgenSupport.WORD);
+            CgenSupport.emitDispTableRef(nodo.getName(), str);
+            str.print(CgenSupport.NEWLINE);
+
+
+            for (int m = 0; m < tipos.size(); m++){
+                AbstractSymbol t = tipos.get(m);
+                str.print(CgenSupport.WORD);
+                if (t.equals(TreeConstants.Str)){
+                    ((StringSymbol) AbstractTable.stringtable.lookup("0")).codeRef(str);
+
+                }else if (t.equals(TreeConstants.Int)){
+                    ((IntSymbol) AbstractTable.inttable.lookup("0")).codeRef(str);
+                }else if(t.equals(TreeConstants.Bool)){
+                    BoolConst.falsebool.codeRef(str);
+
+                }else{
+                    str.print(0);
+                }
+
+            str.print(CgenSupport.NEWLINE);    
+            }
+
+        
+
+            
+        }
        
 
         
@@ -484,8 +536,42 @@ class CgenClassTable extends SymbolTable {
         if (Flags.cgen_debug) System.out.println("coding global text");
         codeGlobalText();
 
-    
+        for (int i = 0; i < classes.size(); i++){
+            AbstractSymbol nombre = classes.get(i);
+            CgenSupport.emitInitRef(nombre, str);
+            str.print(CgenSupport.LABEL);
+            CgenNode nodo = (CgenNode) lookup(nombre);
 
+            CgenSupport.emitPrologue(0, str);
+            if (!nombre.equals(TreeConstants.Object_)) {
+                AbstractSymbol padre = nodo.getParent();
+                CgenSupport.emitJal(padre.toString().concat(CgenSupport.CLASSINIT_SUFFIX), str);
+            }
+
+            for (Enumeration e = nodo.getFeatures().getElements(); e.hasMoreElements(); ) {
+                Object f = e.nextElement();
+                if (f instanceof attr) {
+                    attr a = (attr) f;
+                    
+                    //ver si puedo cambiarlo un poco 
+                    if (a.init != null && !(a.init instanceof no_expr)) {
+                        a.init.code(str);
+                        
+                        LinkedList<AbstractSymbol> tipos = new LinkedList<AbstractSymbol>();
+                        atri(nodo, tipos); 
+                        
+        
+                        int attrIndex = getAttributeOffset(nodo, a.name);
+                        int offsetWords = CgenSupport.DEFAULT_OBJFIELDS + attrIndex;
+                    
+                        CgenSupport.emitStore(CgenSupport.ACC, offsetWords, CgenSupport.SELF, str);
+                    }
+                }
+            }    
+
+        
+        }        
+        CgenSupport.emitEpilogue(0, true, str);
        
         //                 Add your code to emit
         //                   - object initializer
@@ -497,7 +583,75 @@ class CgenClassTable extends SymbolTable {
     public CgenNode root() {
         return (CgenNode)probe(TreeConstants.Object_);
     }
+    // para poder hacer los _dispTab
+    public void met(CgenNode node, LinkedList<AbstractSymbol> due, LinkedList<AbstractSymbol> nombres ){
+        if (!node.getName().equals(TreeConstants.Object_)){
+            met(node.getParentNd(), due, nombres);
+        }
+        for (Enumeration e = node.getFeatures().getElements(); e.hasMoreElements(); ) {
+            Object o = e.nextElement();
+            if (!(o instanceof method)){
+                continue;
+            }else{    
+                method me = (method) o;
+
+                int k = nombres.indexOf(me.name);
+                if (k != -1){
+                    due.set(k, node.getName()); // override 
+                }else{
+                    due.add(node.getName());       // metodo nuevo 
+                    nombres.add(me.name);
+                }
 
 
+            }
+        }
 
-}
+    }
+
+    // para los protObj
+    public void atri(CgenNode node, LinkedList<AbstractSymbol> tipos){
+        if (!node.getName().equals(TreeConstants.Object_)){
+            atri(node.getParentNd(), tipos);
+        }
+        for (Enumeration e = node.getFeatures().getElements(); e.hasMoreElements(); ) {
+            Object o = e.nextElement();
+            if (!(o instanceof attr)){
+                continue;
+            }else{    
+                attr a = (attr) o;
+                tipos.add(a.type_decl);
+
+
+            }
+        }
+
+    }
+
+    public int getAttributeOffset(CgenNode node, AbstractSymbol attrName) {
+        LinkedList<attr> allAttrs = new LinkedList<attr>();
+        collectAttributes(node, allAttrs);
+        
+        for (int i = 0; i < allAttrs.size(); i++) {
+            if (allAttrs.get(i).name.equals(attrName)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    //ver si lo puedo cambiar un poco 
+    private void collectAttributes(CgenNode node, LinkedList<attr> allAttrs) {
+        if (!node.getName().equals(TreeConstants.Object_)) {
+            collectAttributes(node.getParentNd(), allAttrs);
+        }
+        for (Enumeration e = node.getFeatures().getElements(); e.hasMoreElements(); ) {
+            Object o = e.nextElement();
+            if (o instanceof attr) {
+                allAttrs.add((attr) o);
+            }
+        }
+    }
+   
+   
+}    
