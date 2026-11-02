@@ -48,6 +48,7 @@ class CgenClassTable extends SymbolTable {
     static CgenClassTable tabla;
     static int cont = 0;
     static CgenNode claseActual; 
+    static method metodo; 
 
 
 
@@ -553,6 +554,7 @@ class CgenClassTable extends SymbolTable {
             str.print(CgenSupport.LABEL);
             CgenNode nodo = (CgenNode) lookup(nombre);
             claseActual = nodo;
+            metodo = null; 
 
             CgenSupport.emitPrologue(3, str);
             if (!nombre.equals(TreeConstants.Object_)) {
@@ -607,6 +609,7 @@ class CgenClassTable extends SymbolTable {
                     Object f = e.nextElement();
                     if (f instanceof method) {
                         method m = (method) f;
+                        metodo = m; 
 
                         CgenSupport.emitMethodRef(nd.getName(), m.name, str);
                         str.print(CgenSupport.LABEL);

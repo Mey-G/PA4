@@ -699,6 +699,38 @@ class static_dispatch extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+       for (Enumeration e = actual.getElements(); e.hasMoreElements(); ) {
+            Expression ex = (Expression) e.nextElement();
+            ex.code(s);
+            CgenSupport.emitPush(CgenSupport.ACC, s);
+        }
+            
+            expr.code(s);
+            
+            int num = CgenClassTable.cont++;
+            CgenSupport.emitBne(CgenSupport.ACC, CgenSupport.ZERO, num, s);
+            CgenSupport.emitLoadString(CgenSupport.ACC, (StringSymbol)AbstractTable.stringtable.lookup(CgenClassTable.claseActual.getFilename().getString()), s);
+            CgenSupport.emitLoadImm(CgenSupport.T1, lineNumber, s);
+            CgenSupport.emitJal("_dispatch_abort", s);
+            CgenSupport.emitLabelDef(num, s);
+        
+            AbstractSymbol tipo = expr.get_type();
+            if (tipo.equals(TreeConstants.SELF_TYPE)){
+                tipo = CgenClassTable.claseActual.getName();
+            }
+            CgenNode nodo = (CgenNode) CgenClassTable.tabla.lookup(type_name);
+            LinkedList<AbstractSymbol> due = new LinkedList<AbstractSymbol>();
+            LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();
+            CgenClassTable.tabla.met(nodo, due, nombres);
+            int i = nombres.indexOf(name);
+
+            CgenSupport.emitLoadAddress(CgenSupport.T1, type_name + CgenSupport.DISPTAB_SUFFIX, s);
+            CgenSupport.emitLoad(CgenSupport.T1, i, CgenSupport.T1, s);
+            CgenSupport.emitJalr(CgenSupport.T1, s);
+
+            
+
+                  
     }
 
 }
@@ -906,6 +938,24 @@ class loop extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        
+        
+        int num1 = CgenClassTable.cont++;
+        int num2 = CgenClassTable.cont++;
+        CgenSupport.emitLabelDef(num1, s);
+        
+        pred.code(s);
+        CgenSupport.emitFetchInt(CgenSupport.T1, CgenSupport.ACC, s);
+
+        CgenSupport.emitBeqz(CgenSupport.T1, num2, s);
+
+        body.code(s);
+        CgenSupport.emitBranch(num1,s);
+
+        CgenSupport.emitLabelDef(num2, s);
+       
+        CgenSupport.emitMove(CgenSupport.ACC, CgenSupport.ZERO, s);
+
     }
 
 }
@@ -1787,10 +1837,27 @@ class new_ extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
-        CgenSupport.emitLoadAddress(CgenSupport.ACC, type_name + CgenSupport.PROTOBJ_SUFFIX, s);
         
-        CgenSupport.emitJal("Object.copy", s );
-        CgenSupport.emitJal(type_name + CgenSupport.CLASSINIT_SUFFIX, s);
+        if (type_name.equals(TreeConstants.SELF_TYPE)){
+            CgenSupport.emitLoad(CgenSupport.T1, CgenSupport.TAG_OFFSET, CgenSupport.SELF, s);
+            CgenSupport.emitSlli(CgenSupport.T1, CgenSupport.T1, 3, s);
+            CgenSupport.emitLoadAddress(CgenSupport.T2, CgenSupport.CLASSOBJTAB, s);
+
+            CgenSupport.emitPush(CgenSupport.T2, s); 
+            CgenSupport.emitLoad(CgenSupport.ACC, 0, CgenSupport.T2,s);
+            CgenSupport.emitJal("Object.copy", s);
+            CgenSupport.emitLoad(CgenSupport.T2, 1, CgenSupport.SP, s);
+            CgenSupport.emitAddi(CgenSupport.SP, CgenSupport.SP, 4, s);
+            CgenSupport.emitLoad(CgenSupport.T2, 1, CgenSupport.T2, s);
+
+            CgenSupport.emitJalr(CgenSupport.T2, s);
+        }else{
+            CgenSupport.emitLoadAddress(CgenSupport.ACC, type_name + CgenSupport.PROTOBJ_SUFFIX, s);
+        
+            CgenSupport.emitJal("Object.copy", s );
+            CgenSupport.emitJal(type_name + CgenSupport.CLASSINIT_SUFFIX, s);
+
+        }
     }
 
 }
@@ -1929,12 +1996,23 @@ class object extends Expression {
 
         if (name.equals(TreeConstants.self)){
             CgenSupport.emitMove(CgenSupport.ACC, CgenSupport.SELF, s); 
-            
-        }else{
-            int posi = CgenClassTable.tabla.attri(CgenClassTable.claseActual, name);
-            int off = CgenSupport.DEFAULT_OBJFIELDS + posi;
-            CgenSupport.emitLoad(CgenSupport.ACC, off, CgenSupport.SELF, s);
         }
+            
+            if (CgenClassTable.metodo != null){
+                Enumeration con = CgenClassTable.metodo.formals.getElements();
+                if (formalc.name.equals(name) ){
+                    n = metodo.formals.getLength(); 
+                    CgenSupport.emitLoad(CgenSupport.ACC, 3+ ( n-1-cont), CgenSupport.FP, s);
+
+
+                }else{
+                    int posi = CgenClassTable.tabla.attri(CgenClassTable.claseActual, name);
+                    int off = CgenSupport.DEFAULT_OBJFIELDS + posi;
+                    CgenSupport.emitLoad(CgenSupport.ACC, off, CgenSupport.SELF, s);
+                
+                }
+            }
+            }
         
 
 
