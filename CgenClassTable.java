@@ -49,6 +49,10 @@ class CgenClassTable extends SymbolTable {
     static int cont = 0;
     static CgenNode claseActual; 
     static method metodo; 
+    static int p = 0; 
+    static LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();
+    static LinkedList<Integer> var = new LinkedList<Integer>();
+           
 
 
 
