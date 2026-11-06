@@ -1023,7 +1023,70 @@ class typcase extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        expr.code(s);
+        int num = CgenClassTable.cont++;
+        CgenSupport.emitBne(CgenSupport.ACC, CgenSupport.ZERO, num, s);
+
+        StringSymbol stin = (StringSymbol) AbstractTable.stringtable.lookup(CgenClassTable.claseActual.getFilename().getString());
+
+        CgenSupport.emitLoadString(CgenSupport.ACC, stin, s);
+        CgenSupport.emitLoadImm(CgenSupport.T1, lineNumber, s);
+        CgenSupport.emitJal("_case_abort2", s);
+
+        CgenSupport.emitLabelDef(num, s);
+
+
+        CgenSupport.emitLoad(CgenSupport.T1, CgenSupport.TAG_OFFSET, CgenSupport.ACC, s);
+
+        int num2 = CgenClassTable.cont++;
+        for (Enumeration e = cases.getElements(); e.hasMoreElements(); ) {
+            branch b = (branch) e.nextElement();
+            int next = CgenClassTable.cont++;
+
+            // se busca el nodo en la tabla del compilador 
+            CgenNode node = (CgenNode) CgenClassTable.tabla.lookup(b.type_decl);
+
+            int tag = 0;
+            if (b.type_decl.equals(TreeConstants.Object_)){
+                tag = 0; 
+            }else if (b.type_decl.equals(TreeConstants.IO)){
+                tag = 1; 
+            }else if (b.type_decl.equals(TreeConstants.Int)){
+                tag = 2; 
+            }else if (b.type_decl.equals(TreeConstants.Bool)){
+                tag = 3; 
+            }else if (b.type_decl.equals(TreeConstants.Str)){
+                tag = 4; 
+            }
+
+            CgenSupport.emitLoadImm(CgenSupport.T2, tag, s);
+            CgenSupport.emitBne(CgenSupport.T1, CgenSupport.T2, next, s);
+
+            CgenSupport.emitPush(CgenSupport.ACC, s);
+            CgenClassTable.p++;
+            CgenClassTable.nombres.add(b.name);
+            CgenClassTable.var.add(CgenClassTable.p);
+
+            b.expr.code(s);
+
+            //  se limpia la pila
+            CgenClassTable.nombres.removeLast();
+            CgenClassTable.var.removeLast();
+            CgenSupport.emitAddi(CgenSupport.SP, CgenSupport.SP, 4, s);
+            CgenClassTable.p--;
+
+            // Saltar al final del case
+            CgenSupport.emitBranch(num2, s);
+            CgenSupport.emitLabelDef(next, s);
+        }
+
+        // si no coincide con ninguna rama 
+        CgenSupport.emitJal("_case_abort", s);
+
+      
+        CgenSupport.emitLabelDef(num2, s);
     }
+    
 
 }
 
