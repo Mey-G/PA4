@@ -746,7 +746,7 @@ class static_dispatch extends Expression {
             CgenSupport.emitLoadAddress(CgenSupport.T1, type_name + CgenSupport.DISPTAB_SUFFIX, s);
             CgenSupport.emitLoad(CgenSupport.T1, i, CgenSupport.T1, s);
             CgenSupport.emitJalr(CgenSupport.T1, s);
-                  
+            CgenClassTable.p -= actual.getLength();
     }
 
 }
@@ -810,6 +810,7 @@ class dispatch extends Expression {
             Expression ex = (Expression) e.nextElement();
             ex.code(s);
             CgenSupport.emitPush(CgenSupport.ACC, s);
+            CgenClassTable.p++;
         }
             
             expr.code(s);
@@ -834,6 +835,8 @@ class dispatch extends Expression {
             CgenSupport.emitLoad(CgenSupport.T1, CgenSupport.DISPTABLE_OFFSET, CgenSupport.ACC, s);
             CgenSupport.emitLoad(CgenSupport.T1, i, CgenSupport.T1, s);
             CgenSupport.emitJalr(CgenSupport.T1, s);
+            CgenClassTable.p -= actual.getLength(); 
+            
 
             
 
@@ -1530,9 +1533,11 @@ class neg extends Expression {
     public void code(PrintStream s) {
         e1.code(s);
         CgenSupport.emitJal("Object.copy", s);
-        CgenSupport.emitNeg(CgenSupport.T1, CgenSupport.ACC, s);
         CgenSupport.emitFetchInt(CgenSupport.T1, CgenSupport.ACC, s);
+        CgenSupport.emitNeg(CgenSupport.T1, CgenSupport.ACC, s);
         CgenSupport.emitStoreInt(CgenSupport.T1, CgenSupport.ACC, s);
+        
+
     }   
 
 }

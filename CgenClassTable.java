@@ -46,13 +46,13 @@ class CgenClassTable extends SymbolTable {
     private int boolclasstag;
 
     static CgenClassTable tabla;
-    static int cont = 0;
-    static CgenNode claseActual; 
-    static method metodo; 
-    static int p = 0; 
-    static LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();
-    static LinkedList<Integer> var = new LinkedList<Integer>();
-           
+    static int cont = 0;        // contador global 
+    static CgenNode claseActual;        //la clase que se esta generando 
+    static method metodo;               // metodo actual, para buscar parametros 
+    static int p = 0;                   // cuantas palabras hay apiladas 
+    static LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();           // pila de nombres de variables 
+    static LinkedList<Integer> var = new LinkedList<Integer>();                         // es el valor de p cuando se apilo cada variable, es una pila paraleal 
+    static LinkedList<AbstractSymbol> listaTags = new LinkedList<AbstractSymbol>();  
 
 
 
@@ -418,6 +418,7 @@ class CgenClassTable extends SymbolTable {
         installClasses(cls);
         buildInheritanceTree();
 
+        
         tabla = this; 
         code(cls, str);
 
@@ -427,7 +428,7 @@ class CgenClassTable extends SymbolTable {
     /** This method is the meat of the code generator.  It is to be
         filled in programming assignment 5 */
     public void code(Classes cls, PrintStream str) {
-        // hacer lista para guardar todos los tags 
+        
         
         if (Flags.cgen_debug) System.out.println("coding global data");
         codeGlobalData();
@@ -438,6 +439,8 @@ class CgenClassTable extends SymbolTable {
         if (Flags.cgen_debug) System.out.println("coding constants");
         codeConstants();
 
+        // se arma la lista classes en el orden indicado 
+        // la posicion en esta lista es el tag de la clase 
         LinkedList<AbstractSymbol> classes = new LinkedList<AbstractSymbol>();
         classes.add(TreeConstants.Object_);
         classes.add(TreeConstants.IO);
@@ -450,6 +453,8 @@ class CgenClassTable extends SymbolTable {
             classes.add(currClass.getName());
         
         }
+        listaTags = classes; // la posicion en esta lista es el tag de la clase 
+        //class_nameTab
         str.print(CgenSupport.CLASSNAMETAB.concat(CgenSupport.LABEL));
 
 
@@ -460,7 +465,7 @@ class CgenClassTable extends SymbolTable {
         }
         
     
-
+        // class_objTab
         str.print(CgenSupport.CLASSOBJTAB.concat(CgenSupport.LABEL));
 
         for (int i = 0; i < classes.size(); i++){
@@ -559,6 +564,9 @@ class CgenClassTable extends SymbolTable {
             CgenNode nodo = (CgenNode) lookup(nombre);
             claseActual = nodo;
             metodo = null; 
+            p = 0;
+            nombres.clear();
+            var.clear();
 
             CgenSupport.emitPrologue(3, str);
             if (!nombre.equals(TreeConstants.Object_)) {
@@ -614,6 +622,10 @@ class CgenClassTable extends SymbolTable {
                     if (f instanceof method) {
                         method m = (method) f;
                         metodo = m; 
+                        p = 0;
+                        nombres.clear();
+                        var.clear();
+
 
                         CgenSupport.emitMethodRef(nd.getName(), m.name, str);
                         str.print(CgenSupport.LABEL);
