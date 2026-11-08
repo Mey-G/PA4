@@ -24,8 +24,6 @@ PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
 import java.io.PrintStream;
 import java.util.Vector;
 
-import javax.swing.table.AbstractTableModel;
-
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedList;
@@ -49,7 +47,7 @@ class CgenClassTable extends SymbolTable {
     static int cont = 0;        // contador global 
     static CgenNode claseActual;        //la clase que se esta generando 
     static method metodo;               // metodo actual, para buscar parametros 
-    static int p = 0;                   // cuantas palabras hay apiladas 
+    static int p = 0;                   // cuantas palabras hay apiladas ahora, nombres/var = pila de variables locales 
     static LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();           // pila de nombres de variables 
     static LinkedList<Integer> var = new LinkedList<Integer>();                         // es el valor de p cuando se apilo cada variable, es una pila paraleal 
     static LinkedList<AbstractSymbol> listaTags = new LinkedList<AbstractSymbol>();  
@@ -454,7 +452,7 @@ class CgenClassTable extends SymbolTable {
         
         }
         listaTags = classes; // la posicion en esta lista es el tag de la clase 
-        //class_nameTab
+        // emite class_nameTab, es una palabra por clase con la referencia a su string de nombre 
         str.print(CgenSupport.CLASSNAMETAB.concat(CgenSupport.LABEL));
 
 
@@ -465,7 +463,8 @@ class CgenClassTable extends SymbolTable {
         }
         
     
-        // class_objTab
+        // class_objTab por cada clase, entrada = 2 palabras = 8 bytes
+        // en new SELF_TYPE usa tag*8 para indexar
         str.print(CgenSupport.CLASSOBJTAB.concat(CgenSupport.LABEL));
 
         for (int i = 0; i < classes.size(); i++){
@@ -478,17 +477,20 @@ class CgenClassTable extends SymbolTable {
             str.print(CgenSupport.NEWLINE);
         }
 
-        // es para los _dispTab
+        // emite los _dispTab de cada clase 
+        // tabla de metodos de la clase
         for (int i = 0; i < classes.size(); i++){
             CgenNode nodo = (CgenNode) lookup(classes.get(i));
             CgenSupport.emitDispTableRef(nodo.getName(), str);
             str.print(CgenSupport.LABEL);
         
-
+            // que clase define cada uno 
             LinkedList<AbstractSymbol> due  = new LinkedList<AbstractSymbol>();
+            // metodos 
             LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();  
+            // el met devuelve las listas paralelas 
             met(nodo, due, nombres);
-
+            // primero va el padre y un override ocupala misma posicion que el original, esa posicion es el indice que usa el dispatch 
             for (int k = 0; k < nombres.size(); k++){
                 str.print(CgenSupport.WORD);
                 CgenSupport.emitMethodRef(due.get(k), nombres.get(k), str);
@@ -497,7 +499,9 @@ class CgenClassTable extends SymbolTable {
         
         }
 
-        // para los protObj
+        // para los protObj de cada clase 
+        // hace el .word -1 antes de la etiqueta es la marca del GC
+        // Cada atributo empeiza con su valor por defecto segun el tipo 
         for (int i = 0; i < classes.size(); i++){
             CgenNode nodo = (CgenNode) lookup(classes.get(i));
             str.print(CgenSupport.WORD + "-1" + CgenSupport.NEWLINE);   // marca del GC
@@ -555,7 +559,11 @@ class CgenClassTable extends SymbolTable {
 
         if (Flags.cgen_debug) System.out.println("coding global text");
         codeGlobalText();
-        // es el _init 
+        // es el _init de la clase
+        // primero reinicia el estado del generador
+        // llama al init del padre 
+        // se evalua y guarda los atributos con inicializador 
+        // por ultimo devuelve self en a0
         for (int i = 0; i < classes.size(); i++){
              
             AbstractSymbol nombre = classes.get(i);
@@ -579,8 +587,7 @@ class CgenClassTable extends SymbolTable {
                 atri(nodo.getParentNd(), heredados);
             }
 
-            int cont = heredados.size();
-                
+            
 
             for (Enumeration e = nodo.getFeatures().getElements(); e.hasMoreElements(); ) {
                 Object f = e.nextElement();
@@ -611,6 +618,9 @@ class CgenClassTable extends SymbolTable {
         } 
 
         // para el Main.main
+        /*Emite todos los metodos de las clases no basicas
+        antes de cada uno fija claseActual, metodo y se reinicia p, nombres y var
+        el epilogo libera 3 + los paramteros */
         for (int k = 0; k < nds.size(); k++){
             
             CgenNode nd = nds.get(k);
@@ -651,7 +661,8 @@ class CgenClassTable extends SymbolTable {
     public CgenNode root() {
         return (CgenNode)probe(TreeConstants.Object_);
     }
-    // para poder hacer los _dispTab
+    // el met hace recursion hacia el padre primero, si el metodo ya esta en la lista 
+    //  remplaza el dueño en due en la misma posicion y sino lo agrega al final 
     public void met(CgenNode node, LinkedList<AbstractSymbol> due, LinkedList<AbstractSymbol> nombres ){
         if (!node.getName().equals(TreeConstants.Object_)){
             met(node.getParentNd(), due, nombres);
@@ -678,7 +689,8 @@ class CgenClassTable extends SymbolTable {
 
     }
 
-    // para los protObj
+    // recorre el padre primero y luego los atributos propios 
+    // junta los tipos 
     public void atri(CgenNode node, LinkedList<AbstractSymbol> tipos){
         if (!node.getName().equals(TreeConstants.Object_)){
             atri(node.getParentNd(), tipos);
@@ -696,7 +708,7 @@ class CgenClassTable extends SymbolTable {
         }
 
     }
-// devuelve 
+// devuelve el indice del atributo en esa lista completa 
     public int attri(CgenNode node, AbstractSymbol attrName) {
         LinkedList<attr> allattrs = new LinkedList<attr>();
         recopatri(node, allattrs);
@@ -709,7 +721,8 @@ class CgenClassTable extends SymbolTable {
         return 0;
     }
 
-    //ver si lo puedo cambiar un poco 
+    // recorre el padre primero y luego los atributos propios 
+    // junta los objetos attr completos 
     private void recopatri(CgenNode node, LinkedList<attr> allattrs) {
         if (!node.getName().equals(TreeConstants.Object_)) {
             recopatri(node.getParentNd(), allattrs);
@@ -722,7 +735,27 @@ class CgenClassTable extends SymbolTable {
         }
     }
 
-    
-   
+     // profundidad de una clase en el arbol de herencia Object = 0
+    public int profundidad(AbstractSymbol tipo) {
+
+        CgenNode no = (CgenNode) lookup(tipo);
+        int d = 0;
+        while (!no.getName().equals(TreeConstants.Object_)) {
+            no = no.getParentNd();
+            d++;
+        }
+        return d;
+    }
+
+
+    // true si hijo es igual a ancestro o hereda de el
+    public boolean esSubclase(AbstractSymbol hijo, AbstractSymbol ancestro) {
+        CgenNode n = (CgenNode) lookup(hijo);
+        while (true) {
+            if (n.getName().equals(ancestro)) return true;
+            if (n.getName().equals(TreeConstants.Object_)) return false;
+            n = n.getParentNd();
+        }
+    }
    
 }    

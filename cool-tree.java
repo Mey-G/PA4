@@ -631,6 +631,12 @@ class assign extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        /*primero evalua la expresión (queda en ACC) y luego guarda 
+        segun donde este la variable
+        El orden de busqueda es el mismo que en object: local, 
+        parámetro o atributo, Termina con return en cada rama para 
+        no caer a la siguiente.
+         */
         expr.code(s);
         // se va a buscar desde el ultimo introducido para respetar el sombreado de variables
         int in = CgenClassTable.nombres.lastIndexOf(name);
@@ -720,6 +726,7 @@ class static_dispatch extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+         
        for (Enumeration e = actual.getElements(); e.hasMoreElements(); ) {
             Expression ex = (Expression) e.nextElement();
             ex.code(s);
@@ -736,7 +743,8 @@ class static_dispatch extends Expression {
             CgenSupport.emitJal("_dispatch_abort", s);
             CgenSupport.emitLabelDef(num, s);
         
-          
+            // la diferencia es que la disptab es la del tipo escrito, no la del objeto
+            // con esto se llama al metodo de esa clase aunque el objeto sea de una subclase  
             CgenNode nodo = (CgenNode) CgenClassTable.tabla.lookup(type_name);
             LinkedList<AbstractSymbol> due = new LinkedList<AbstractSymbol>();
             LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();
@@ -823,6 +831,8 @@ class dispatch extends Expression {
             CgenSupport.emitLabelDef(num, s);
         
             AbstractSymbol tipo = expr.get_type();
+            // calcula el indice del metodo con el tipo estatico, SELF_TYPE se reemplada 
+            // por la clase actual 
             if (tipo.equals(TreeConstants.SELF_TYPE)){
                 tipo = CgenClassTable.claseActual.getName();
             }
@@ -831,7 +841,7 @@ class dispatch extends Expression {
             LinkedList<AbstractSymbol> nombres = new LinkedList<AbstractSymbol>();
             CgenClassTable.tabla.met(nodo, due, nombres);
             int i = nombres.indexOf(name);
-
+            // carga la distab del objeto en tiempo de ejecucion 
             CgenSupport.emitLoad(CgenSupport.T1, CgenSupport.DISPTABLE_OFFSET, CgenSupport.ACC, s);
             CgenSupport.emitLoad(CgenSupport.T1, i, CgenSupport.T1, s);
             CgenSupport.emitJalr(CgenSupport.T1, s);
@@ -1038,33 +1048,37 @@ class typcase extends Expression {
 
         CgenSupport.emitLabelDef(num, s);
 
-
+        // T1 = tag del objeto en timepo de ejecucion 
         CgenSupport.emitLoad(CgenSupport.T1, CgenSupport.TAG_OFFSET, CgenSupport.ACC, s);
 
-        int num2 = CgenClassTable.cont++;
+        LinkedList<branch> ramas = new LinkedList<branch>();
         for (Enumeration e = cases.getElements(); e.hasMoreElements(); ) {
             branch b = (branch) e.nextElement();
-            int next = CgenClassTable.cont++;
-
-            // se busca el nodo en la tabla del compilador 
-            CgenNode node = (CgenNode) CgenClassTable.tabla.lookup(b.type_decl);
-
-            int tag = 0;
-            if (b.type_decl.equals(TreeConstants.Object_)){
-                tag = 0; 
-            }else if (b.type_decl.equals(TreeConstants.IO)){
-                tag = 1; 
-            }else if (b.type_decl.equals(TreeConstants.Int)){
-                tag = 2; 
-            }else if (b.type_decl.equals(TreeConstants.Bool)){
-                tag = 3; 
-            }else if (b.type_decl.equals(TreeConstants.Str)){
-                tag = 4; 
+            int d = CgenClassTable.tabla.profundidad(b.type_decl);
+            int m = 0;
+            while (m < ramas.size() && CgenClassTable.tabla.profundidad(ramas.get(m).type_decl) >= d) {
+                m++;
             }
+            ramas.add(m, b);
+        }
 
-            CgenSupport.emitLoadImm(CgenSupport.T2, tag, s);
-            CgenSupport.emitBne(CgenSupport.T1, CgenSupport.T2, next, s);
+        int fin = CgenClassTable.cont++;
+        for (int r = 0; r < ramas.size(); r++) {
+            branch b = ramas.get(r);
+            int sig = CgenClassTable.cont++;      // siguiente rama
+            int cuerpo = CgenClassTable.cont++;   // cuerpo de esta rama
 
+            // la rama acepta el tag de su clase y el de todas sus subclases
+            for (int k = 0; k < CgenClassTable.listaTags.size(); k++) {
+                if (CgenClassTable.tabla.esSubclase(CgenClassTable.listaTags.get(k), b.type_decl)) {
+                    CgenSupport.emitLoadImm(CgenSupport.T2, k, s);
+                    CgenSupport.emitBeq(CgenSupport.T1, CgenSupport.T2, cuerpo, s);
+                }
+            }
+            CgenSupport.emitBranch(sig, s);
+
+            CgenSupport.emitLabelDef(cuerpo, s);
+            // el objeto (ACC) se vuelve variable local de la rama
             CgenSupport.emitPush(CgenSupport.ACC, s);
             CgenClassTable.p++;
             CgenClassTable.nombres.add(b.name);
@@ -1072,22 +1086,20 @@ class typcase extends Expression {
 
             b.expr.code(s);
 
-            //  se limpia la pila
             CgenClassTable.nombres.removeLast();
             CgenClassTable.var.removeLast();
             CgenSupport.emitAddi(CgenSupport.SP, CgenSupport.SP, 4, s);
             CgenClassTable.p--;
 
-            // Saltar al final del case
-            CgenSupport.emitBranch(num2, s);
-            CgenSupport.emitLabelDef(next, s);
+            CgenSupport.emitBranch(fin, s);
+            CgenSupport.emitLabelDef(sig, s);
         }
 
         // si no coincide con ninguna rama 
         CgenSupport.emitJal("_case_abort", s);
 
       
-        CgenSupport.emitLabelDef(num2, s);
+        CgenSupport.emitLabelDef(fin, s);
     }
     
 
@@ -1135,6 +1147,7 @@ class block extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        //ejecuta las expresiones en orden y el valor de la ultima queda en ACC 
         for (Enumeration e = body.getElements(); e.hasMoreElements(); ) {
             Expression ex = (Expression) e.nextElement();
             ex.code(s);
@@ -1201,6 +1214,8 @@ class let extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        // si no hay inicializasdor carga el valor por defecto del tipo (0, "", false o void)
+        // si si hay evalua init 
         
         if (init instanceof no_expr){
             if (type_decl.equals(TreeConstants.Int)){
@@ -1218,7 +1233,8 @@ class let extends Expression {
         }else{
             init.code(s);
         }
-
+            // el valor se apila y se registra con su posicion p 
+            // al teminar el cuerpo se desregistra y se libera la palabra (sp += 4) y se baja p
             CgenSupport.emitPush(CgenSupport.ACC, s);
             CgenClassTable.p++;
             CgenClassTable.nombres.add(identifier);
@@ -1287,6 +1303,8 @@ class plus extends Expression {
         CgenSupport.emitPush(CgenSupport.ACC, s);
         CgenClassTable.p++;
         e2.code(s);
+        // copia el resultado de e2 para tener un int nuevo donde guardar la respuesta 
+        // es para no modificar un objeto compartido, que son las constantes 
         CgenSupport.emitJal("Object.copy", s);
         CgenSupport.emitFetchInt(CgenSupport.T2, CgenSupport.ACC, s);
 
@@ -1534,7 +1552,7 @@ class neg extends Expression {
         e1.code(s);
         CgenSupport.emitJal("Object.copy", s);
         CgenSupport.emitFetchInt(CgenSupport.T1, CgenSupport.ACC, s);
-        CgenSupport.emitNeg(CgenSupport.T1, CgenSupport.ACC, s);
+        CgenSupport.emitNeg(CgenSupport.T1, CgenSupport.T1, s);
         CgenSupport.emitStoreInt(CgenSupport.T1, CgenSupport.ACC, s);
         
 
@@ -1587,6 +1605,7 @@ class lt extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        // esto no copua, carga true en ACC y si T1 < T2 Salta al final sino se sobre escribe con false 
         e1.code(s);
         CgenSupport.emitPush(CgenSupport.ACC, s);
         CgenClassTable.p++;
@@ -1654,6 +1673,8 @@ class eq extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        // deja en T1 y T2, ACC = true, A1 = false y llama a equality_test del runtnime
+        //el runtime compara int, bool y string por valor y el respo por referencia 
         e1.code(s);
         CgenSupport.emitPush(CgenSupport.ACC, s);
         CgenClassTable.p++;
@@ -1715,6 +1736,7 @@ class leq extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        // casi que lo mismo que con lt 
         e1.code(s);
         CgenSupport.emitPush(CgenSupport.ACC, s);
         CgenClassTable.p++;
@@ -1778,6 +1800,7 @@ class comp extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
+        // si el valor es 0 deja true, sino false 
         e1.code(s);
         CgenSupport.emitFetchInt(CgenSupport.T1, CgenSupport.ACC, s);
         int l = CgenClassTable.cont++;
@@ -1964,7 +1987,10 @@ class new_ extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
-        
+        // lee el tag de self, se multiplica por 8
+        // se suma la base de class_objtab y se obtiene la direccion de la entrada 
+        // new SELF_TYPE: el tipo real se conoce en ejecución; se busca en class_objTab por tag.
+        // La dirección de la entrada se guarda en la pila porque Object.copy destruye T2.
         if (type_name.equals(TreeConstants.SELF_TYPE)){
             CgenSupport.emitLoad(CgenSupport.T1, CgenSupport.TAG_OFFSET, CgenSupport.SELF, s);
             CgenSupport.emitSlli(CgenSupport.T1, CgenSupport.T1, 3, s);
@@ -1982,6 +2008,7 @@ class new_ extends Expression {
 
             CgenSupport.emitJalr(CgenSupport.T2, s);
         }else{
+            // es el caso normal, carga el Tipo_protObj, Object.copu y luego Tipo_init
             CgenSupport.emitLoadAddress(CgenSupport.ACC, type_name + CgenSupport.PROTOBJ_SUFFIX, s);
             
             CgenSupport.emitJal("Object.copy", s );
@@ -2123,7 +2150,7 @@ class object extends Expression {
       * @param s the output stream
       * */
     public void code(PrintStream s) {
-
+        // si es self hace mv a0 s0
         if (name.equals(TreeConstants.self)){
             CgenSupport.emitMove(CgenSupport.ACC, CgenSupport.SELF, s); 
             return; 
