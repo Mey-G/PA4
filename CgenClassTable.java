@@ -582,10 +582,7 @@ class CgenClassTable extends SymbolTable {
                 CgenSupport.emitJal(padre.toString().concat(CgenSupport.CLASSINIT_SUFFIX), str);
             }
 
-            LinkedList<AbstractSymbol> heredados = new LinkedList<AbstractSymbol>();
-            if (!nodo.getName().equals(TreeConstants.Object_)){
-                atri(nodo.getParentNd(), heredados);
-            }
+           
 
             
 
@@ -598,10 +595,7 @@ class CgenClassTable extends SymbolTable {
                     if (a.init != null && !(a.init instanceof no_expr)) {
                         a.init.code(str);
                         
-                        LinkedList<AbstractSymbol> tipos = new LinkedList<AbstractSymbol>();
-                        atri(nodo, tipos); 
                         
-        
                         int attrIndex = attri(nodo, a.name);
                         int offsetWords = CgenSupport.DEFAULT_OBJFIELDS + attrIndex;
                     

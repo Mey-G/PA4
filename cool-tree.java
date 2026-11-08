@@ -1684,9 +1684,15 @@ class eq extends Expression {
         CgenSupport.emitLoad(CgenSupport.T1, 1, CgenSupport.SP, s);
         CgenSupport.emitAddi(CgenSupport.SP, CgenSupport.SP, 4, s);
         CgenClassTable.p--;
-        CgenSupport.emitLoadBool(CgenSupport.ACC, BoolConst.truebool, s);
-        CgenSupport.emitLoadBool(CgenSupport.A1, BoolConst.falsebool, s);
-        CgenSupport.emitJal("equality_test", s);
+
+        // si los dos son lo mismo (se incluye el void) el resultado es true
+        //equality_test solo compara por valor Int, Bool y String
+        int l = CgenClassTable.cont++;   // etiqueta para saltar equality_test                                       
+        CgenSupport.emitLoadBool(CgenSupport.ACC, BoolConst.truebool, s);       // ACC = POR DEFECTO ES TRUE
+        CgenSupport.emitBeq(CgenSupport.T1, CgenSupport.T2, l, s);               
+        CgenSupport.emitLoadBool(CgenSupport.A1, BoolConst.falsebool, s);       // A1 = false para el runtime
+        CgenSupport.emitJal("equality_test", s);                    // compara por valor si no son el mismo objeto
+        CgenSupport.emitLabelDef(l, s);     
         }
 
 }
